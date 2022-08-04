@@ -1,0 +1,11 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "ec2-mini-project"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-1ju35394dss9a"
+s3_prefix = "vpc-testing"
+region = "us-west-2"
+confirm_changeset = false
+capabilities = ["CAPABILITY_IAM", "CAPABILITY_NAMED_IAM"]
+image_repositories = []

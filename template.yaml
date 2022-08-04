@@ -1,0 +1,158 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+
+Resources:
+  MyKeyPair:
+    Type: AWS::EC2::KeyPair
+    Properties:
+      KeyName: MyActualKeyPair
+      KeyType: rsa
+
+  MyEC2:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: "ami-098e42ae54c764c35"
+      AvailabilityZone: us-west-2a
+      IamInstanceProfile: !Ref MyIamInstanceProfile
+      InstanceType: t2.nano
+      KeyName: !Ref MyKeyPair
+      SecurityGroupIds:
+        - !Ref MySecurityGroup
+      SubnetId: !Ref MySubnet
+      Tags:
+        - Key: Name
+          Value: MyActualEC2
+      UserData:
+        Fn::Base64: !Sub
+          - |
+            #!/bin/bash
+            cd /home/ec2-user
+
+            pip3 install requests boto3
+
+            # create environment variables
+            export S3BUCKET=${MyS3Bucket}
+
+            wget ${PythonFile}
+            python3 main.py
+          - PythonFile: https://raw.githubusercontent.com/pakhunchan/EC2-Mini-Project/main/main.py
+
+  MyVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: True
+      EnableDnsSupport: True
+      Tags:
+        - Key: Name
+          Value: MyActualVPC
+
+  MySubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: us-west-2a
+      CidrBlock: 10.0.0.0/24
+      MapPublicIpOnLaunch: True
+      Tags:
+        - Key: Name
+          Value: MyActualSubnet
+      VpcId: !Ref MyVPC
+
+  MyIamInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: MyActualIamInstanceProfile
+      Path: /
+      Roles:
+        - !Ref MyIamRole
+
+  MyIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: MyActualIamRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - "sts:AssumeRole"
+      Path: /
+      Policies:
+        - PolicyName: AccessToS3
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: "s3:*"
+                Resource: "*"
+
+  MySecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: MyActualSecurityGroup
+      GroupDescription: Allow all outbound traffic, allow only SSH inbound traffic
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+          FromPort: -1
+          IpProtocol: -1
+          ToPort: -1
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          Description: Only allow SSH inbound
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+      VpcId: !Ref MyVPC
+
+  MyInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: MyActualInternetGateway
+
+  AttachInternetGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref MyInternetGateway
+      VpcId: !Ref MyVPC
+
+  MyRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      Tags:
+        - Key: Name
+          Value: MyActualRouteTable
+      VpcId: !Ref MyVPC
+
+  MyEC2Route:
+    DependsOn: MyInternetGateway
+    Type: AWS::EC2::Route
+    Properties:
+      GatewayId: !Ref MyInternetGateway
+      RouteTableId: !Ref MyRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+
+  MySubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref MyRouteTable
+      SubnetId: !Ref MySubnet
+
+  MyS3Bucket:
+    Type: AWS::S3::Bucket
+
+Outputs:
+  MyKeyPair:
+    Value: !GetAtt MyKeyPair.KeyPairId
+
+  MyS3Bucket:
+    Value: !Ref MyS3Bucket
+    Description: Name of the S3 bucket where the files are located
+
+  SshCommand:
+    Value: !Sub "ssh -i ${MyKeyPair}.pem ec2-user@${MyEC2.PublicDnsName}"
